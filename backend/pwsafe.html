@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureVault</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div style="text-align:center;margin-bottom:8px">
+    <div style="font-size:32px">🔐</div>
+    <div style="font-size:22px;font-weight:700;color:var(--accent)">SecureVault</div>
+    <div style="font-size:12px;color:var(--muted)">Корпоративный менеджер паролей</div>
+  </div>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <button class="active" onclick="switchTab('login')">Войти</button>
+      <button onclick="switchTab('register')">Регистрация</button>
+    </div>
+    <div id="tab-login">
+      <label>Email</label>
+      <input id="login-email" type="email" placeholder="user@company.com" value="admin@company.com">
+      <label>Мастер-пароль</label>
+      <input id="login-pass" type="password" placeholder="Мастер-пароль" value="Admin1234!">
+      <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="login-2fa">
+        <label for="login-2fa" style="font-size:12px;color:var(--muted)">Использовать 2FA (TOTP)</label>
+      </div>
+      <div id="totp-field" style="display:none;margin-top:6px">
+        <label style="font-size:12px;color:var(--muted)">Код из приложения</label>
+        <input placeholder="000000" maxlength="6" style="width:100%">
+      </div>
+      <div class="err" id="login-err"></div>
+      <button class="primary" onclick="doLogin()" style="margin-top:14px;width:100%">Войти</button>
+      <div class="hint">Тестовые аккаунты: admin@company.com / Admin1234!<br>manager@co.com / Pass1234! &nbsp;|&nbsp; viewer@co.com / View1234!</div>
+    </div>
+    <div id="tab-register" style="display:none">
+      <label>Имя</label><input id="reg-name" placeholder="Иван Петров">
+      <label>Email</label><input id="reg-email" type="email" placeholder="user@company.com">
+      <div class="row modal" style="padding:0;gap:8px;display:flex;margin-top:10px">
+        <div style="flex:1"><label>Мастер-пароль</label><input id="reg-pass" type="password" placeholder="Минимум 12 символов"></div>
+        <div style="flex:1"><label>Подтверждение</label><input id="reg-pass2" type="password" placeholder="Повторите пароль"></div>
+      </div>
+      <div id="reg-strength" style="margin-top:4px">
+        <div class="strength-bar" id="reg-sbar" style="width:0;background:#ccc"></div>
+        <span id="reg-slabel" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <label style="margin-top:10px">Роль</label>
+      <select id="reg-role"><option>Пользователь</option><option>Менеджер команды</option><option>Только чтение</option></select>
+      <label>Организация / команда</label>
+      <input id="reg-org" placeholder="IT-отдел, DevOps, ...">
+      <div class="err" id="reg-err"></div>
+      <button class="primary" onclick="doRegister()" style="margin-top:14px;width:100%">Создать аккаунт</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP SCREEN -->
+<div id="app-screen">
+  <div class="topbar">
+    <div class="logo">🔐 SecureVault</div>
+    <span id="lock-timer" style="font-size:11px;color:#7a96b0"></span>
+    <button onclick="showModal('lock-modal')">🔒 Заблокировать</button>
+    <button onclick="showModal('export-modal')">⬆ Экспорт</button>
+    <span class="user-badge" id="topbar-user">admin</span>
+    <button onclick="logout()">Выход</button>
+  </div>
+  <div class="workspace">
+    <div class="sidebar">
+      <div class="sidebar-section">Хранилище</div>
+      <div class="sidebar-item active" onclick="nav('vault')"><span class="icon">🗂</span>Все записи<span class="badge" id="badge-all">12</span></div>
+      <div class="sidebar-item" onclick="nav('vault','work')"><span class="icon">💼</span>Работа</div>
+      <div class="sidebar-item" onclick="nav('vault','personal')"><span class="icon">🏠</span>Личное</div>
+      <div class="sidebar-item" onclick="nav('vault','finance')"><span class="icon">💳</span>Финансы</div>
+      <div class="sidebar-item" onclick="nav('vault','dev')"><span class="icon">🖥</span>Dev / IT</div>
+      <div class="sidebar-item" onclick="nav('vault','starred')"><span class="icon">⭐</span>Избранное</div>
+      <div class="sidebar-section">Инструменты</div>
+      <div class="sidebar-item" onclick="nav('audit')"><span class="icon">🛡</span>Аудит<span class="badge" id="badge-audit" style="background:#c0392b">3</span></div>
+      <div class="sidebar-item" onclick="nav('sharing')"><span class="icon">🤝</span>Общий доступ</div>
+      <div class="sidebar-item" onclick="nav('import')"><span class="icon">⬇</span>Импорт</div>
+      <div class="sidebar-section">Аккаунт</div>
+      <div class="sidebar-item" onclick="nav('settings')"><span class="icon">⚙</span>Настройки</div>
+      <div id="admin-nav" class="sidebar-item" onclick="nav('admin')"><span class="icon">👑</span>Администрирование</div>
+    </div>
+
+    <div class="main">
+
+      <!-- VAULT VIEW -->
+      <div class="view active" id="view-vault">
+        <div class="view-header">
+          <h2 id="vault-title">Все записи</h2>
+          <button class="primary" onclick="showModal('add-modal')">+ Добавить</button>
+        </div>
+        <div class="view-body" style="display:flex;gap:0;padding:0;flex:1;overflow:hidden">
+          <div style="flex:1;overflow-y:auto;padding:14px 16px">
+            <div class="toolbar">
+              <input id="search-inp" placeholder="🔍 Поиск по названию, логину, URL..." oninput="filterEntries()">
+              <select id="filter-cat" onchange="filterEntries()">
+                <option value="">Все категории</option>
+                <option>work</option><option>personal</option><option>finance</option><option>dev</option>
+              </select>
+              <select id="sort-sel" onchange="filterEntries()">
+                <option value="name">По названию</option>
+                <option value="modified">По изменению</option>
+                <option value="expiry">По сроку</option>
+                <option value="strength">По надёжности</option>
+              </select>
+              <button onclick="showModal('add-modal')">+ Запись</button>
+            </div>
+            <table id="vault-table">
+              <thead><tr>
+                <th>Название</th><th>Логин</th><th>Категория</th>
+                <th>Надёжность</th><th>Изменён</th><th>Срок</th><th></th>
+              </tr></thead>
+              <tbody id="vault-body"></tbody>
+            </table>
+          </div>
+          <div class="detail-panel" id="detail-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <h3 id="dp-title">—</h3>
+              <button class="ghost" onclick="closeDetail()">✕</button>
+            </div>
+            <div id="dp-content"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUDIT VIEW -->
+      <div class="view" id="view-audit">
+        <div class="view-header"><h2>Аудит безопасности</h2>
+          <button onclick="generateReport()">📄 Отчёт</button>
+        </div>
+        <div class="view-body">
+          <div class="stat-grid" id="audit-stats"></div>
+          <h3 style="font-size:13px;font-weight:500;margin-bottom:10px;color:var(--muted)">Проблемы и предупреждения</h3>
+          <div id="audit-list"></div>
+        </div>
+      </div>
+
+      <!-- SHARING VIEW -->
+      <div class="view" id="view-sharing">
+        <div class="view-header"><h2>Общий доступ</h2>
+          <button class="primary" onclick="showModal('share-modal')">+ Поделиться</button>
+        </div>
+        <div class="view-body">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Записи, к которым вы предоставили или получили доступ</p>
+          <div id="share-list"></div>
+        </div>
+      </div>
+
+      <!-- IMPORT VIEW -->
+      <div class="view" id="view-import">
+        <div class="view-header"><h2>Импорт / Экспорт</h2></div>
+        <div class="view-body">
+          <div class="settings-section">
+            <h3>Импорт паролей</h3>
+            <div class="import-zone" onclick="notify('Выберите файл CSV, KeePass XML или LastPass export')">
+              📂 Перетащите файл или нажмите для выбора<br>
+              <span style="font-size:11px;color:var(--muted)">Поддерживается: CSV, KeePass XML, LastPass, Bitwarden JSON</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <label style="font-size:12px;color:var(--muted)">Формат:</label>
+              <select style="flex:1"><option>CSV (общий)</option><option>KeePass 2.x XML</option><option>LastPass CSV</option><option>Bitwarden JSON</option><option>1Password 1PIF</option></select>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+                <input type="checkbox" checked> Дедупликация
+              </label>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button class="primary" onclick="notify('Импорт завершён: добавлено 8 записей, пропущено 2 дубликата')">Импортировать</button>
+              <button onclick="notify('Предпросмотр: 10 записей найдено')">Предпросмотр</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Экспорт хранилища</h3>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <label style="font-size:12px;color:var(--muted)">Формат:</label>
+              <select style="flex:1"><option>CSV (незашифрованный)</option><option>KeePass XML</option><option>Зашифрованный архив (.vault)</option><option>JSON</option></select>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+                <input type="checkbox" checked> Только выбранные категории
+              </label>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="primary" onclick="showModal('export-modal')">Экспортировать</button>
+              <button onclick="notify('Резервная копия создана: vault_backup_2024-06-01.enc')">Создать резервную копию</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS VIEW -->
+      <div class="view" id="view-settings">
+        <div class="view-header"><h2>Настройки</h2></div>
+        <div class="view-body">
+          <div class="settings-section">
+            <h3>Безопасность</h3>
+            <div class="settings-row"><label>Двухфакторная аутентификация (TOTP)</label><div class="ctrl"><label class="toggle"><input type="checkbox" id="s-2fa"><span class="slider-toggle"></span></label><button onclick="notify('QR-код для настройки 2FA сгенерирован')">Настроить</button></div></div>
+            <div class="settings-row"><label>Автоблокировка через (мин)</label><div class="ctrl"><input type="number" value="15" min="1" max="120" style="width:60px"></div></div>
+            <div class="settings-row"><label>Буфер обмена — очистить через (сек)</label><div class="ctrl"><input type="number" value="30" min="5" max="300" style="width:60px"></div></div>
+            <div class="settings-row"><label>Запрашивать мастер-пароль при копировании</label><div class="ctrl"><label class="toggle"><input type="checkbox"><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Биометрическая разблокировка</label><div class="ctrl"><label class="toggle"><input type="checkbox" id="s-bio"><span class="slider-toggle"></span></label></div></div>
+          </div>
+          <div class="settings-section">
+            <h3>Генератор паролей (по умолчанию)</h3>
+            <div class="settings-row"><label>Длина пароля</label><div class="ctrl"><input type="range" min="8" max="64" value="16" style="width:100px"> <span>16</span></div></div>
+            <div class="settings-row"><label>Использовать спецсимволы</label><div class="ctrl"><label class="toggle"><input type="checkbox" checked><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Использовать цифры</label><div class="ctrl"><label class="toggle"><input type="checkbox" checked><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Исключить похожие символы (0, O, l, 1)</label><div class="ctrl"><label class="toggle"><input type="checkbox"><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Режим кодовой фразы</label><div class="ctrl"><label class="toggle"><input type="checkbox"><span class="slider-toggle"></span></label></div></div>
+          </div>
+          <div class="settings-section">
+            <h3>Уведомления</h3>
+            <div class="settings-row"><label>Email-уведомление об истечении пароля</label><div class="ctrl"><label class="toggle"><input type="checkbox" checked><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>За сколько дней предупреждать</label><div class="ctrl"><input type="number" value="14" style="width:60px"></div></div>
+            <div class="settings-row"><label>Уведомлять о новом входе с устройства</label><div class="ctrl"><label class="toggle"><input type="checkbox" checked><span class="slider-toggle"></span></label></div></div>
+          </div>
+          <div class="settings-section">
+            <h3>Смена мастер-пароля</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input type="password" placeholder="Текущий мастер-пароль" style="flex:1;min-width:160px">
+              <input type="password" placeholder="Новый мастер-пароль" style="flex:1;min-width:160px">
+              <input type="password" placeholder="Подтверждение" style="flex:1;min-width:160px">
+            </div>
+            <button class="primary" style="margin-top:10px" onclick="notify('Мастер-пароль успешно изменён')">Сменить мастер-пароль</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN VIEW -->
+      <div class="view" id="view-admin">
+        <div class="view-header"><h2>Администрирование</h2>
+          <button class="primary" onclick="showModal('invite-modal')">+ Пригласить пользователя</button>
+        </div>
+        <div class="view-body">
+          <div class="settings-section">
+            <h3>Пользователи организации</h3>
+            <div id="user-list"></div>
+          </div>
+          <div class="settings-section">
+            <h3>Политики безопасности</h3>
+            <div class="settings-row"><label>Минимальная длина мастер-пароля</label><div class="ctrl"><input type="number" value="12" style="width:60px"></div></div>
+            <div class="settings-row"><label>Обязательная 2FA для всех</label><div class="ctrl"><label class="toggle"><input type="checkbox"><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Принудительная смена паролей (дней)</label><div class="ctrl"><input type="number" value="90" style="width:60px"></div></div>
+            <div class="settings-row"><label>Запрет экспорта рядовым пользователям</label><div class="ctrl"><label class="toggle"><input type="checkbox" checked><span class="slider-toggle"></span></label></div></div>
+            <div class="settings-row"><label>Запрет личных хранилищ</label><div class="ctrl"><label class="toggle"><input type="checkbox"><span class="slider-toggle"></span></label></div></div>
+            <button class="primary" style="margin-top:12px" onclick="notify('Политики сохранены')">Сохранить политики</button>
+          </div>
+          <div class="settings-section">
+            <h3>Журнал событий</h3>
+            <div id="admin-log"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /workspace -->
+</div><!-- /app-screen -->
+
+<!-- MODALS -->
+<div class="overlay" id="add-modal">
+  <div class="modal">
+    <h2 id="modal-entry-title">Новая запись</h2>
+    <label>Название *</label><input id="e-title" placeholder="GitHub, Gmail, ...">
+    <label>URL</label><input id="e-url" placeholder="https://...">
+    <label>Логин / Email</label><input id="e-login" placeholder="user@example.com">
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end">
+      <div style="flex:1"><label>Пароль</label><input id="e-pass" type="password" placeholder="Пароль" oninput="updateStrengthBar()"></div>
+      <button onclick="generatePw()" style="white-space:nowrap">⚡ Сгенерировать</button>
+      <button onclick="togglePassVis()" id="vis-btn">👁</button>
+    </div>
+    <div class="strength-bar" id="entry-sbar" style="width:0;background:#ccc;margin-top:4px"></div>
+    <span id="entry-slabel" style="font-size:11px;color:var(--muted)"></span>
+    <div class="pw-gen" id="pw-gen-opts" style="background:#f8f8f4;border-radius:6px;padding:8px;margin-top:6px;gap:8px">
+      <label>Длина: <input type="range" min="8" max="64" value="16" id="gen-len" oninput="this.nextElementSibling.textContent=this.value;generatePw()"><span style="font-size:12px">16</span></label>
+      <label><input type="checkbox" id="gen-upper" checked> A-Z</label>
+      <label><input type="checkbox" id="gen-num" checked> 0-9</label>
+      <label><input type="checkbox" id="gen-sym" checked> !@#</label>
+      <label><input type="checkbox" id="gen-phrase"> Фраза</label>
+    </div>
+    <label>Категория</label>
+    <select id="e-cat"><option value="work">Работа</option><option value="personal">Личное</option><option value="finance">Финансы</option><option value="dev">Dev / IT</option></select>
+    <label>Срок действия</label><input id="e-expiry" type="date">
+    <label>TOTP-секрет (опционально)</label><input id="e-totp" placeholder="base32-секрет">
+    <label>Теги (через запятую)</label><input id="e-tags" placeholder="vpn, work, important">
+    <label>Заметки</label><textarea id="e-notes" placeholder="Дополнительная информация..."></textarea>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="e-fav"> Добавить в избранное</label>
+    <div class="actions">
+      <button onclick="closeModal('add-modal')">Отмена</button>
+      <button class="primary" onclick="saveEntry()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="export-modal">
+  <div class="modal">
+    <h2>Экспорт хранилища</h2>
+    <p style="font-size:12px;color:var(--danger);margin-bottom:12px">⚠ Незашифрованный экспорт содержит все пароли в открытом виде. Храните файл в безопасном месте.</p>
+    <label>Формат</label>
+    <select><option>CSV</option><option>KeePass XML</option><option>Зашифрованный архив (.vault)</option><option>JSON</option></select>
+    <label>Мастер-пароль для подтверждения</label>
+    <input type="password" placeholder="Введите мастер-пароль">
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" checked> Включить метаданные и теги</label>
+    <label style="display:flex;align-items:center;gap:6px"><input type="checkbox"> Только избранные</label>
+    <div class="actions">
+      <button onclick="closeModal('export-modal')">Отмена</button>
+      <button class="primary" onclick="closeModal('export-modal');notify('Файл vault_export.csv сформирован и скачан')">Экспортировать</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="share-modal">
+  <div class="modal">
+    <h2>Поделиться записью</h2>
+    <label>Запись</label>
+    <select id="share-entry"><option>GitHub — работа</option><option>AWS Console</option><option>Сервер prod-db-01</option></select>
+    <label>Получатель (email)</label>
+    <input id="share-email" placeholder="colleague@company.com">
+    <label>Права доступа</label>
+    <select id="share-perm"><option value="read">Только чтение</option><option value="edit">Редактирование</option></select>
+    <label>Срок действия ссылки</label>
+    <select><option>1 день</option><option>7 дней</option><option>30 дней</option><option>Бессрочно</option></select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox"> Требовать подтверждение по email</label>
+    <div class="actions">
+      <button onclick="closeModal('share-modal')">Отмена</button>
+      <button class="primary" onclick="saveShare()">Поделиться</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="invite-modal">
+  <div class="modal">
+    <h2>Пригласить пользователя</h2>
+    <label>Email</label><input placeholder="newuser@company.com">
+    <label>Имя</label><input placeholder="Иван Иванов">
+    <label>Роль</label>
+    <select><option>Пользователь</option><option>Менеджер команды</option><option>Только чтение</option><option>Администратор</option></select>
+    <label>Группа / Команда</label>
+    <select><option>DevOps</option><option>Разработка</option><option>Финансы</option><option>HR</option><option>Без группы</option></select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" checked> Отправить приветственное письмо</label>
+    <div class="actions">
+      <button onclick="closeModal('invite-modal')">Отмена</button>
+      <button class="primary" onclick="closeModal('invite-modal');notify('Приглашение отправлено')">Пригласить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="lock-modal">
+  <div class="modal" style="width:320px;text-align:center">
+    <div style="font-size:36px;margin-bottom:8px">🔒</div>
+    <h2 style="text-align:center">Хранилище заблокировано</h2>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Введите мастер-пароль для разблокировки</p>
+    <input type="password" placeholder="Мастер-пароль" style="width:100%;margin-bottom:8px">
+    <div style="display:flex;gap:8px">
+      <button style="flex:1" onclick="closeModal('lock-modal')">Отмена</button>
+      <button class="primary" style="flex:1" onclick="closeModal('lock-modal');notify('Хранилище разблокировано')">Разблокировать</button>
+    </div>
+  </div>
+</div>
+
+<div id="notif"></div>
+
+<script>
+const ENTRIES = [
+  {id:1,title:"GitHub",url:"https://github.com",login:"dev@company.com",pass:"xK9#mP2$vL",cat:"dev",strength:4,modified:"2024-05-20",expiry:"2024-12-31",tags:["dev","vcs"],fav:true,notes:"Основной аккаунт организации. 2FA включена."},
+  {id:2,title:"Gmail рабочий",url:"https://mail.google.com",login:"admin@company.com",pass:"Qwerty1234",cat:"work",strength:2,modified:"2023-11-10",expiry:"2024-06-01",tags:["work","google"],fav:false,notes:""},
+  {id:3,title:"AWS Console",url:"https://aws.amazon.com",login:"aws-root@company.com",pass:"Aws$8#Lp!qR2",cat:"dev",strength:5,modified:"2024-04-15",expiry:"2025-01-01",tags:["aws","cloud","root"],fav:true,notes:"ROOT-аккаунт! Только для экстренных случаев."},
+  {id:4,title:"Сбербанк Онлайн",url:"https://sberbank.ru",login:"+7 999 123-45-67",pass:"sber2024",cat:"finance",strength:1,modified:"2024-01-03",expiry:"2024-05-15",tags:["bank"],fav:false,notes:""},
+  {id:5,title:"Jira",url:"https://jira.company.com",login:"ivan.petrov",pass:"Jira!Pass99",cat:"work",strength:3,modified:"2024-03-22",expiry:"2025-03-22",tags:["work","tracker"],fav:false,notes:""},
+  {id:6,title:"Сервер prod-db-01",url:"ssh://prod-db-01.company.com",login:"deploy",pass:"D3pl0y#SSH!Key",cat:"dev",strength:5,modified:"2024-05-01",expiry:"2025-05-01",tags:["ssh","prod","db"],fav:true,notes:"Ключ хранится в /keys/prod/"},
+  {id:7,title:"Личная почта",url:"https://yandex.ru/mail",login:"ivan.petrov@yandex.ru",pass:"personal123",cat:"personal",strength:1,modified:"2022-08-11",expiry:"",tags:["personal"],fav:false,notes:""},
+  {id:8,title:"Slack",url:"https://slack.com",login:"team@company.com",pass:"Sl@ck2024!",cat:"work",strength:4,modified:"2024-02-28",expiry:"2025-02-28",tags:["work","chat"],fav:false,notes:""},
+  {id:9,title:"Figma",url:"https://figma.com",login:"design@company.com",pass:"Figm@Pro1",cat:"work",strength:3,modified:"2024-04-10",expiry:"2025-04-10",tags:["design"],fav:false,notes:""},
+  {id:10,title:"Тинькофф",url:"https://tinkoff.ru",login:"card@gmail.com",pass:"Tink0ff$2024",cat:"finance",strength:4,modified:"2024-03-05",expiry:"2025-03-05",tags:["bank","finance"],fav:false,notes:""},
+  {id:11,title:"VPN корпоративный",url:"vpn://vpn.company.com",login:"vpn_user",pass:"Vpn!2024",cat:"work",strength:3,modified:"2024-01-20",expiry:"2024-06-10",tags:["vpn","work"],fav:false,notes:""},
+  {id:12,title:"Docker Hub",url:"https://hub.docker.com",login:"devops@company.com",pass:"D0ck3r#Hub!",cat:"dev",strength:4,modified:"2024-05-15",expiry:"2025-05-15",tags:["dev","docker"],fav:false,notes:""}
+];
+let entries = [...ENTRIES];
+let currentUser = {name:'',role:''};
+let filterCat = '';
+let selectedEntry = null;
+
+const USERS = [
+  {name:"Александр Иванов",email:"admin@company.com",role:"admin",pass:"Admin1234!"},
+  {name:"Мария Петрова",email:"manager@co.com",role:"manager",pass:"Pass1234!"},
+  {name:"Сергей Смирнов",email:"viewer@co.com",role:"readonly",pass:"View1234!"}
+];
+const SHARES = [
+  {entry:"AWS Console",from:"admin@company.com",to:"manager@co.com",perm:"read",expires:"2024-07-01"},
+  {entry:"Jira",from:"manager@co.com",to:"viewer@co.com",perm:"read",expires:"Бессрочно"},
+  {entry:"GitHub",from:"admin@company.com",to:"manager@co.com",perm:"edit",expires:"2024-12-31"}
+];
+const AUDIT_LOG = [
+  {time:"2024-05-30 09:12",user:"admin@company.com",action:"Вход в систему",icon:"🔑"},
+  {time:"2024-05-29 17:43",user:"manager@co.com",action:"Скопирован пароль: Jira",icon:"📋"},
+  {time:"2024-05-29 14:20",user:"admin@company.com",action:"Создана запись: Docker Hub",icon:"➕"},
+  {time:"2024-05-28 11:05",user:"viewer@co.com",action:"Просмотр записи: Slack",icon:"👁"},
+  {time:"2024-05-27 16:30",user:"admin@company.com",action:"Изменена запись: GitHub",icon:"✏️"},
+];
+
+function switchTab(t){
+  document.getElementById('tab-login').style.display=t==='login'?'':'none';
+  document.getElementById('tab-register').style.display=t==='register'?'':'none';
+  document.querySelectorAll('.auth-tabs button').forEach((b,i)=>b.classList.toggle('active',(t==='login')===!i));
+}
+document.getElementById('login-2fa').addEventListener('change',function(){
+  document.getElementById('totp-field').style.display=this.checked?'block':'none';
+});
+document.getElementById('reg-pass').addEventListener('input',function(){
+  const s=pwStrength(this.value);
+  const bar=document.getElementById('reg-sbar');
+  const lbl=document.getElementById('reg-slabel');
+  bar.style.width=(s*20)+'%';
+  bar.style.background=['','#e74c3c','#e67e22','#f1c40f','#27ae60','#1abc9c'][s];
+  lbl.textContent=['','Очень слабый','Слабый','Средний','Сильный','Очень сильный'][s];
+});
+function pwStrength(pw){
+  let s=0;
+  if(pw.length>=8)s++;if(pw.length>=12)s++;
+  if(/[A-Z]/.test(pw))s++;if(/[0-9]/.test(pw))s++;if(/[^a-zA-Z0-9]/.test(pw))s++;
+  return Math.min(5,s);
+}
+function doLogin(){
+  const e=document.getElementById('login-email').value;
+  const p=document.getElementById('login-pass').value;
+  const u=USERS.find(u=>u.email===e&&u.pass===p);
+  if(!u){document.getElementById('login-err').textContent='Неверный email или пароль';return;}
+  currentUser=u;
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('app-screen').style.display='flex';
+  document.getElementById('topbar-user').textContent=u.name+' ('+u.role+')';
+  document.getElementById('admin-nav').style.display=u.role==='admin'?'flex':'none';
+  renderVault();renderAudit();renderSharing();renderAdminLog();
+}
+function doRegister(){
+  const n=document.getElementById('reg-name').value.trim();
+  const e=document.getElementById('reg-email').value.trim();
+  const p=document.getElementById('reg-pass').value;
+  const p2=document.getElementById('reg-pass2').value;
+  if(!n||!e){document.getElementById('reg-err').textContent='Заполните все поля';return;}
+  if(!e.includes('@')){document.getElementById('reg-err').textContent='Некорректный email';return;}
+  if(p.length<12){document.getElementById('reg-err').textContent='Пароль минимум 12 символов';return;}
+  if(p!==p2){document.getElementById('reg-err').textContent='Пароли не совпадают';return;}
+  notify('Аккаунт создан! Войдите с новыми данными.');
+  switchTab('login');
+}
+function logout(){
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('app-screen').style.display='none';
+}
+function nav(view,cat){
+  filterCat=cat||'';
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
+  if(view==='vault'){
+    const titles={work:'Работа',personal:'Личное',finance:'Финансы',dev:'Dev / IT',starred:'Избранное','':"Все записи"};
+    document.getElementById('vault-title').textContent=titles[cat||''];
+    filterEntries();
+  }
+}
+function filterEntries(){
+  const q=document.getElementById('search-inp').value.toLowerCase();
+  const cat=document.getElementById('filter-cat').value||filterCat;
+  const sort=document.getElementById('sort-sel').value;
+  let rows=[...entries];
+  if(cat==='starred')rows=rows.filter(e=>e.fav);
+  else if(cat)rows=rows.filter(e=>e.cat===cat);
+  if(q)rows=rows.filter(e=>e.title.toLowerCase().includes(q)||e.login.toLowerCase().includes(q)||(e.url&&e.url.toLowerCase().includes(q)));
+  if(sort==='name')rows.sort((a,b)=>a.title.localeCompare(b.title));
+  else if(sort==='modified')rows.sort((a,b)=>b.modified.localeCompare(a.modified));
+  else if(sort==='expiry')rows.sort((a,b)=>(a.expiry||'9').localeCompare(b.expiry||'9'));
+  else if(sort==='strength')rows.sort((a,b)=>a.strength-b.strength);
+  renderRows(rows);
+}
+function renderVault(){filterEntries();}
+function renderRows(rows){
+  const today=new Date().toISOString().split('T')[0];
+  const soon=new Date(Date.now()+14*864e5).toISOString().split('T')[0];
+  const body=document.getElementById('vault-body');
+  body.innerHTML=rows.map(e=>{
+    const exp=e.expiry?(e.expiry<today?`<span class="expired">Истёк</span>`:(e.expiry<soon?`<span class="expiring">${e.expiry}</span>`:e.expiry)):'—';
+    const tags=e.tags.map(t=>`<span class="tag ${t==='work'||t==='tracker'||t==='chat'?'work':t==='dev'||t==='ssh'||t==='cloud'||t==='aws'||t==='docker'?'dev':t==='bank'||t==='finance'?'finance':'personal'}">${t}</span>`).join('');
+    return`<tr class="entry-row" onclick="showDetail(${e.id})">
+      <td><b>${e.title}</b>${e.fav?' ⭐':''}</td>
+      <td style="color:var(--muted);font-size:12px">${e.login}</td>
+      <td>${tags}</td>
+      <td><span class="strength s${e.strength}"></span></td>
+      <td style="color:var(--muted);font-size:12px">${e.modified}</td>
+      <td>${exp}</td>
+      <td><button class="ghost" onclick="event.stopPropagation();copyPw(${e.id})">📋</button><button class="ghost" onclick="event.stopPropagation();editEntry(${e.id})">✏</button><button class="ghost danger" onclick="event.stopPropagation();deleteEntry(${e.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('badge-all').textContent=entries.length;
+}
+function showDetail(id){
+  const e=entries.find(x=>x.id===id);
+  if(!e)return;
+  selectedEntry=e;
+  const panel=document.getElementById('detail-panel');
+  panel.classList.add('open');
+  document.getElementById('dp-title').textContent=e.title;
+  const exp=e.expiry||'Не указан';
+  document.getElementById('dp-content').innerHTML=`
+    <div class="field-row"><label>URL</label><div class="val"><a href="${e.url}" style="color:var(--accent);font-size:12px">${e.url}</a></div></div>
+    <div class="field-row"><label>Логин</label><div class="val">${e.login}<button class="ghost" onclick="copy('${e.login}');notify('Логин скопирован')">📋</button></div></div>
+    <div class="field-row"><label>Пароль</label><div class="val"><span class="pw-mask" id="pw-display">••••••••••</span><button class="ghost" onclick="toggleDpPw(${e.id})">👁</button><button class="ghost" onclick="copyPw(${e.id})">📋</button></div></div>
+    <div class="field-row"><label>Надёжность</label><div class="val"><span class="strength s${e.strength}"></span> &nbsp;${'Очень слабый,Слабый,Средний,Сильный,Очень сильный'.split(',')[e.strength-1]}</div></div>
+    <div class="field-row"><label>Категория</label><div class="val"><span class="tag ${e.cat}">${e.cat}</span></div></div>
+    <div class="field-row"><label>Срок действия</label><div class="val">${exp}</div></div>
+    <div class="field-row"><label>Теги</label><div class="val">${e.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div></div>
+    ${e.notes?`<div class="field-row"><label>Заметки</label><div class="val" style="font-size:12px;color:var(--muted)">${e.notes}</div></div>`:''}
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="editEntry(${e.id})" style="flex:1">✏ Изменить</button>
+      <button onclick="copyPw(${e.id})" style="flex:1">📋 Копировать пароль</button>
+    </div>
+    <div class="field-row" style="margin-top:14px"><label>История паролей</label>
+      <div class="history-list">
+        <div class="history-item"><span>••••••• (предыдущий)</span><span style="font-size:10px">2024-01-15</span></div>
+        <div class="history-item"><span>••••••• (старый)</span><span style="font-size:10px">2023-06-01</span></div>
+      </div>
+    </div>`;
+}
+let dpPwVisible=false;
+function toggleDpPw(id){
+  const e=entries.find(x=>x.id===id);
+  dpPwVisible=!dpPwVisible;
+  document.getElementById('pw-display').textContent=dpPwVisible?e.pass:'••••••••••';
+  document.getElementById('pw-display').className=dpPwVisible?'':'pw-mask';
+}
+function closeDetail(){document.getElementById('detail-panel').classList.remove('open');}
+function copyPw(id){const e=entries.find(x=>x.id===id);copy(e.pass);notify('Пароль скопирован. Буфер очистится через 30 сек.');}
+function copy(t){try{navigator.clipboard.writeText(t)}catch(e){}}
+function editEntry(id){
+  const e=entries.find(x=>x.id===id);
+  document.getElementById('modal-entry-title').textContent='Редактировать запись';
+  document.getElementById('e-title').value=e.title;
+  document.getElementById('e-url').value=e.url;
+  document.getElementById('e-login').value=e.login;
+  document.getElementById('e-pass').type='text';
+  document.getElementById('e-pass').value=e.pass;
+  document.getElementById('e-cat').value=e.cat;
+  document.getElementById('e-expiry').value=e.expiry||'';
+  document.getElementById('e-tags').value=e.tags.join(', ');
+  document.getElementById('e-notes').value=e.notes||'';
+  document.getElementById('e-fav').checked=e.fav;
+  showModal('add-modal');
+}
+function deleteEntry(id){
+  if(!confirm('Удалить запись?'))return;
+  entries=entries.filter(e=>e.id!==id);
+  closeDetail();renderVault();notify('Запись удалена');
+}
+function saveEntry(){
+  const t=document.getElementById('e-title').value.trim();
+  if(!t){notify('Введите название');return;}
+  const existing=entries.find(e=>e.title===document.getElementById('modal-entry-title').textContent.includes('Редакт'));
+  const newEntry={
+    id:Date.now(),title:t,url:document.getElementById('e-url').value,
+    login:document.getElementById('e-login').value,pass:document.getElementById('e-pass').value,
+    cat:document.getElementById('e-cat').value,strength:pwStrength(document.getElementById('e-pass').value),
+    modified:new Date().toISOString().split('T')[0],expiry:document.getElementById('e-expiry').value,
+    tags:document.getElementById('e-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+    fav:document.getElementById('e-fav').checked,notes:document.getElementById('e-notes').value
+  };
+  entries.push(newEntry);renderVault();closeModal('add-modal');notify('Запись сохранена');
+}
+function generatePw(){
+  const len=+document.getElementById('gen-len').value;
+  const upper=document.getElementById('gen-upper').checked;
+  const num=document.getElementById('gen-num').checked;
+  const sym=document.getElementById('gen-sym').checked;
+  const phrase=document.getElementById('gen-phrase').checked;
+  let pw='';
+  if(phrase){const words=['correct','horse','battery','staple','brick','orange','piano','sunset','river'];pw=Array.from({length:4},()=>words[Math.floor(Math.random()*words.length)]).join('-');}
+  else{
+    let chars='abcdefghijklmnopqrstuvwxyz';
+    if(upper)chars+='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if(num)chars+='0123456789';
+    if(sym)chars+='!@#$%^&*()-_=+[]{}|;:,.<>?';
+    pw=Array.from({length:len},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+  }
+  document.getElementById('e-pass').value=pw;
+  document.getElementById('e-pass').type='text';
+  updateStrengthBar();
+}
+function updateStrengthBar(){
+  const pw=document.getElementById('e-pass').value;
+  const s=pwStrength(pw);
+  const bar=document.getElementById('entry-sbar');
+  bar.style.width=(s*20)+'%';
+  bar.style.background=['','#e74c3c','#e67e22','#f1c40f','#27ae60','#1abc9c'][s];
+  document.getElementById('entry-slabel').textContent=['','Очень слабый','Слабый','Средний','Сильный','Очень сильный'][s];
+}
+function togglePassVis(){
+  const inp=document.getElementById('e-pass');
+  inp.type=inp.type==='password'?'text':'password';
+}
+function renderAudit(){
+  const today=new Date().toISOString().split('T')[0];
+  const soon=new Date(Date.now()+14*864e5).toISOString().split('T')[0];
+  const weak=entries.filter(e=>e.strength<=2);
+  const expired=entries.filter(e=>e.expiry&&e.expiry<today);
+  const expiring=entries.filter(e=>e.expiry&&e.expiry>=today&&e.expiry<soon);
+  const dupes=findDupes();
+  document.getElementById('audit-stats').innerHTML=`
+    <div class="stat-card"><div class="num">${entries.length}</div><div class="lbl">Всего записей</div></div>
+    <div class="stat-card danger"><div class="num">${weak.length}</div><div class="lbl">Слабые пароли</div></div>
+    <div class="stat-card warn"><div class="num">${expired.length+expiring.length}</div><div class="lbl">Просрочены / скоро</div></div>
+    <div class="stat-card warn"><div class="num">${dupes.length}</div><div class="lbl">Повторяющихся</div></div>`;
+  document.getElementById('badge-audit').textContent=weak.length+expired.length;
+  const items=[];
+  weak.forEach(e=>items.push({icon:'🔴',text:`Слабый пароль: <b>${e.title}</b>`,sub:'Рекомендуется усилить или сгенерировать новый'}));
+  expired.forEach(e=>items.push({icon:'⏰',text:`Истёк срок: <b>${e.title}</b>`,sub:`Срок действия: ${e.expiry}`}));
+  expiring.forEach(e=>items.push({icon:'⚠️',text:`Скоро истечёт: <b>${e.title}</b>`,sub:`Действует до: ${e.expiry}`}));
+  dupes.forEach(p=>items.push({icon:'♻️',text:`Одинаковый пароль: <b>${p[0].title}</b> и <b>${p[1].title}</b>`,sub:'Используйте уникальный пароль для каждого аккаунта'}));
+  document.getElementById('audit-list').innerHTML=items.map(i=>`
+    <div class="audit-item"><div class="audit-icon">${i.icon}</div><div><div style="font-size:13px">${i.text}</div><div class="audit-meta">${i.sub}</div></div></div>`).join('');
+}
+function findDupes(){
+  const res=[];
+  for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++)
+    if(entries[i].pass===entries[j].pass)res.push([entries[i],entries[j]]);
+  return res;
+}
+function generateReport(){notify('Отчёт безопасности сформирован и скачан: security_report_2024-06-01.pdf');}
+function renderSharing(){
+  document.getElementById('share-list').innerHTML=SHARES.map(s=>`
+    <div class="share-item">
+      <div style="font-size:16px">🔗</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">${s.entry}</div>
+        <div class="meta">${s.from} → ${s.to} &nbsp;|&nbsp; до: ${s.expires}</div>
+      </div>
+      <span class="perm-badge ${s.perm}">${s.perm==='read'?'Чтение':'Редакт.'}</span>
+      <button class="ghost danger" onclick="notify('Доступ отозван')">✕</button>
+    </div>`).join('');
+}
+function saveShare(){
+  const entry=document.getElementById('share-entry').value;
+  const email=document.getElementById('share-email').value;
+  if(!email.includes('@')){notify('Некорректный email');return;}
+  notify(`Доступ к «${entry}» предоставлен для ${email}`);
+  closeModal('share-modal');
+}
+function renderAdminLog(){
+  document.getElementById('user-list').innerHTML=USERS.map(u=>`
+    <div class="user-row">
+      <div class="avatar">${u.name.split(' ').map(w=>w[0]).join('')}</div>
+      <div style="flex:1"><div style="font-size:13px">${u.name}</div><div style="font-size:11px;color:var(--muted)">${u.email}</div></div>
+      <span class="role-badge ${u.role}">${{admin:'Администратор',manager:'Менеджер',readonly:'Только чтение'}[u.role]}</span>
+      <select style="font-size:12px;padding:3px 6px"><option>Изменить роль</option><option>Пользователь</option><option>Менеджер</option><option>Только чтение</option><option>Администратор</option></select>
+      <button class="ghost danger" onclick="notify('Пользователь заблокирован')">🚫</button>
+    </div>`).join('');
+  document.getElementById('admin-log').innerHTML=AUDIT_LOG.map(l=>`
+    <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #f5f5f0;font-size:12px">
+      <span>${l.icon}</span>
+      <span style="color:var(--muted);white-space:nowrap">${l.time}</span>
+      <span style="color:var(--muted)">${l.user}</span>
+      <span style="flex:1">${l.action}</span>
+    </div>`).join('');
+}
+function showModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');}));
+function notify(msg){
+  const c=document.getElementById('notif');
+  const el=document.createElement('div');
+  el.className='notif-item';el.textContent=msg;c.appendChild(el);
+  requestAnimationFrame(()=>{el.classList.add('show');});
+  setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),300);},3000);
+}
+
+// API Configuration
+// ФИКСИРОВАННЫЙ URL - всегда используем localhost:3000
+const API_URL = 'http://localhost:3000/api';
+
+console.log('🌐 API URL:', API_URL);
+console.log('📍 Текущий адрес:', window.location.href);
+
+let authToken = null;
+
+// Проверка соединения с сервером
+async function checkServerConnection() {
+  try {
+    const response = await fetch(`${API_URL.replace('/api', '')}/health`);
+    if (response.ok) {
+      console.log('✅ Сервер доступен');
+      return true;
+    }
+  } catch (error) {
+    console.error('❌ Сервер недоступен:', error.message);
+    return false;
+  }
+}
+
+// Вызов при загрузке страницы
+window.addEventListener('load', async () => {
+  const isConnected = await checkServerConnection();
+  if (!isConnected) {
+    notify('⚠️ Сервер не запущен! Запустите сервер командой: npm start');
+  }
+});
+
+// API Helper functions
+async function apiRequest(endpoint, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers
+  });
+  
+  if (response.status === 401) {
+    // Token expired, redirect to login
+    logout();
+    throw new Error('Session expired');
+  }
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+  
+  return data;
+}
+
+// Override existing doLogin function
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const twoFactorCode = document.getElementById('totp-field').querySelector('input')?.value;
+  
+  const loginErr = document.getElementById('login-err');
+  loginErr.textContent = '';
+  
+  try {
+    const data = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, twoFactorCode })
+    });
+    
+    if (data.requiresTwoFactor) {
+      document.getElementById('totp-field').style.display = 'block';
+      loginErr.textContent = 'Please enter your 2FA code';
+      return;
+    }
+    
+    authToken = data.token;
+    currentUser = data.user;
+    
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'flex';
+    document.getElementById('topbar-user').textContent = `${currentUser.name} (${currentUser.role})`;
+    document.getElementById('admin-nav').style.display = currentUser.role === 'admin' ? 'flex' : 'none';
+    
+    await loadVaultData();
+    renderVault();
+    renderAudit();
+    renderSharing();
+    if (currentUser.role === 'admin') {
+      renderAdminLog();
+    }
+  } catch (error) {
+    loginErr.textContent = error.message;
+  }
+}
+
+// Load entries from backend
+async function loadVaultData() {
+  try {
+    const data = await apiRequest('/entries');
+    entries = data.own.map(entry => ({
+      ...entry,
+      modified: entry.updated_at?.split('T')[0] || entry.created_at?.split('T')[0]
+    }));
+    renderVault();
+  } catch (error) {
+    console.error('Failed to load entries:', error);
+    notify('Failed to load vault data');
+  }
+}
+
+// Override saveEntry
+async function saveEntry() {
+  const title = document.getElementById('e-title').value.trim();
+  if (!title) {
+    notify('Введите название');
+    return;
+  }
+  
+  const entryData = {
+    title,
+    url: document.getElementById('e-url').value,
+    login: document.getElementById('e-login').value,
+    password: document.getElementById('e-pass').value,
+    category: document.getElementById('e-cat').value,
+    expiry_date: document.getElementById('e-expiry').value,
+    tags: document.getElementById('e-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+    is_favorite: document.getElementById('e-fav').checked,
+    notes: document.getElementById('e-notes').value
+  };
+  
+  try {
+    await apiRequest('/entries', {
+      method: 'POST',
+      body: JSON.stringify(entryData)
+    });
+    
+    closeModal('add-modal');
+    await loadVaultData();
+    notify('Запись сохранена');
+  } catch (error) {
+    notify('Ошибка сохранения: ' + error.message);
+  }
+}
+
+// Override deleteEntry
+async function deleteEntry(id) {
+  if (!confirm('Удалить запись?')) return;
+  
+  try {
+    await apiRequest(`/entries/${id}`, { method: 'DELETE' });
+    closeDetail();
+    await loadVaultData();
+    notify('Запись удалена');
+  } catch (error) {
+    notify('Ошибка удаления: ' + error.message);
+  }
+}
+
+// Override copyPw to log action
+async function copyPw(id) {
+  const entry = entries.find(x => x.id === id);
+  if (entry) {
+    copy(entry.password);
+    notify('Пароль скопирован. Буфер очистится через 30 сек.');
+    
+    // Log copy action
+    try {
+      await apiRequest(`/entries/${id}/copy`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to log copy:', error);
+    }
+  }
+}
+
+// Override logout
+function logout() {
+  if (authToken) {
+    apiRequest('/auth/logout', { method: 'POST' }).catch(console.error);
+  }
+  authToken = null;
+  currentUser = {};
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display = 'none';
+}
+
+// Add these to your existing HTML
+// Also add a check at page load to verify token
+window.addEventListener('load', () => {
+  // Check for stored token? Could add localStorage support
+});
+</script>
+</body>
+</html>

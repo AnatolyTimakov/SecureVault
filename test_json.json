@@ -1,0 +1,48 @@
+[
+  {
+    "title": "GitHub Account",
+    "url": "https://github.com",
+    "login": "developer@example.com",
+    "password": "GitHub_Pass_2024!",
+    "category": "dev",
+    "notes": "Лицензия: Team plan",
+    "tags": ["development", "version-control"]
+  },
+  {
+    "title": "Google Workspace",
+    "url": "https://workspace.google.com",
+    "login": "admin@company.com",
+    "password": "Google_Admin_Secret_123",
+    "category": "work",
+    "notes": "Администратор домена",
+    "tags": ["email", "calendar"]
+  },
+  {
+    "title": "AWS Console",
+    "url": "https://aws.amazon.com/console",
+    "login": "root@company.com",
+    "password": "Aws_Super_Strong_P@ssw0rd!",
+    "category": "dev",
+    "notes": "Root аккаунт, использовать осторожно! MFA включена",
+    "tags": ["cloud", "aws", "production"]
+  },
+  {
+    "title": "Сбербанк Бизнес",
+    "url": "https://sberbank.ru/business",
+    "login": "+7 999 123-45-67",
+    "password": "Sber_Biz_2024",
+    "category": "finance",
+    "notes": "Корпоративный счет",
+    "tags": ["bank", "finance"]
+  },
+  {
+    "title": "VPN Corporate",
+    "url": "vpn.company.com",
+    "login": "ivan.petrov",
+    "password": "Vpn_Access_2024!",
+    "category": "work",
+    "expiry_date": "2025-12-31",
+    "notes": "Доступ ко всем внутренним серверам",
+    "tags": ["vpn", "security"]
+  }
+]
