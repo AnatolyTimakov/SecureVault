@@ -1,0 +1,8 @@
+vault.db
+vault.db-journal
+logs/
+*.log
+*.db
+*.db-journal
+node_modules/
+.env
